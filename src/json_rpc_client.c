@@ -79,7 +79,7 @@ int send_rpc_message(char *host, ushort rpc_port, jvalue_ref post_body_jval, jva
         goto exit;
     }
 
-    sprintf(url, "http://%s:%d/json-rpc", host, rpc_port);
+    sprintf(url, "http://%s:%d/json-rpc", strcmp(host, "/tmp/hyperhdr-domain") == 0 ? "127.0.0.1" : host, rpc_port);
     DBG("JSON-RPC target: %s", url);
 
     const char *post_body = jvalue_tostring_simple(post_body_jval);
