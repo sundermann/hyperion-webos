@@ -9,6 +9,10 @@
 #include <string.h>
 #include <unistd.h>
 
+#define LUT_INDEX(y,u,v) ((y + (u<<8) + (v<<16))*3)
+#define LUT_PATH "/media/developer/apps/usr/palm/services/org.webosbrew.piccap.service/flat_lut_lin_tables.3d"
+#define LUT_FILE_SIZE 256 * 256 * 256 * 3
+
 #define DLSYM_ERROR_CHECK()                         \
     if ((error = dlerror()) != NULL) {              \
         ERR("Error! dlsym failed, msg: %s", error); \
@@ -185,6 +189,17 @@ void* unicapture_run(void* data)
 
         if (video_frame.pixel_format != PIXFMT_INVALID) {
             converter_run(&video_converter, &video_frame, &video_frame_converted, PIXFMT_ARGB);
+
+            /*if (this->lut != NULL) {
+                for (int i = 0; i < video_frame_converted.width * video_frame_converted.height * 4; i+=4) {
+                    // TODO: Why is this RGBA?
+                    uint8_t r = ((uint8_t*)(video_frame_converted.planes[0].buffer))[i + 0];
+                    uint8_t g = ((uint8_t*)(video_frame_converted.planes[0].buffer))[i + 1];
+                    uint8_t b = ((uint8_t*)(video_frame_converted.planes[0].buffer))[i + 2];
+
+                    memcpy(&((uint8_t*)video_frame_converted.planes[0].buffer)[i + 0], &this->lut[LUT_INDEX(r, g, b)], 3);
+                }
+            }*/
         }
 
         uint64_t frame_converted = getticks_us();
@@ -246,6 +261,17 @@ void* unicapture_run(void* data)
         } else {
             got_frame = false;
             WARN("No valid frame to send...");
+        }
+
+        if (this->lut != NULL) {
+            for (int i = 0; i < video_frame_converted.width * video_frame_converted.height * 3; i+=3) {
+                // TODO: Why is this RGBA?
+                uint8_t r = ((uint8_t*)(final_frame))[i + 0];
+                uint8_t g = ((uint8_t*)(final_frame))[i + 1];
+                uint8_t b = ((uint8_t*)(final_frame))[i + 2];
+
+                memcpy(&((uint8_t*)final_frame)[i + 0], &this->lut[LUT_INDEX(r, g, b)], 3);
+            }
         }
 
         uint64_t frame_processed = getticks_us();
@@ -335,6 +361,34 @@ void unicapture_init(unicapture_state_t* this)
 {
     memset(this, 0, sizeof(unicapture_state_t));
     this->vsync = true;
+    this->lut = NULL;
+
+    FILE* file = fopen(LUT_PATH, "r");
+    if (file) {
+        size_t length;
+        INFO("LUT file found: %s", LUT_PATH);
+
+        fseek(file, 0, SEEK_END);
+        length = ftell(file);
+        fseek(file, 0, SEEK_SET);
+
+        if (length == LUT_FILE_SIZE) {
+            this->lut = (unsigned char *)malloc(length + 1);
+            if(fread(this->lut, 1, length, file) != length)
+            {
+                free(this->lut);
+                this->lut = NULL;
+                ERR("Error reading LUT file");
+            }
+            else
+                INFO("LUT file has been loaded");
+        }
+        else
+            ERR("LUT file has invalid length: %i", length);
+        fclose(file);
+    } else
+        INFO("LUT file NOT found: %s", LUT_PATH);
+
 }
 
 int unicapture_start(unicapture_state_t* this)
