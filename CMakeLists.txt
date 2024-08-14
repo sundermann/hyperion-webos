@@ -9,7 +9,19 @@ list(JOIN _cflags_list " " COMMON_FLAGS)
 
 add_subdirectory(libyuv)
 add_subdirectory(tv-native-apis)
-add_subdirectory(flatccrt)
+
+include(FetchContent)
+FetchContent_Declare(flatccrt
+        URL https://github.com/dvidelabs/flatcc/archive/v0.6.1.tar.gz
+        URL_HASH SHA512=46ba5ca75facc7d3360dba797d24ae7bfe539a854a48831e1c7b96528cf9594d8bea22b267678fd7c6d742b6636d9e52930987119b4c6b2e38d4abe89b990cae
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_MakeAvailable(flatccrt)
+set_target_properties(flatccrt PROPERTIES
+        BUILD_SHARED_LIBS OFF
+        FLATCC_TEST OFF
+)
+include_directories(${flatccrt_SOURCE_DIR}/include)
 
 add_compile_options(${_cflags_list} -Wall -Wextra -Wpedantic -Werror -DSECURITY_COMPATIBILITY)
 
