@@ -16,6 +16,7 @@ void settings_init(settings_t* settings)
     settings->height = 180;
     settings->quirks = 0;
 
+    settings->send_nv12 = false;
     settings->no_video = false;
     settings->no_gui = false;
     settings->autostart = false;
