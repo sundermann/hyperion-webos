@@ -16,6 +16,7 @@ typedef enum _DynamicRange {
     SDR,
     HDR10,
     DOLBYVISION,
+    NONE,
 } DynamicRange;
 
 const char* daemon_to_string(AmbientLightingDaemon flavor);

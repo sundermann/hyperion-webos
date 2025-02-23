@@ -6,6 +6,7 @@
 #define LUT_FILENAME_DOLBYVISION "lut_lin_tables_dv.3d"
 
 AmbientLightingDaemon daemon_flavor = DAEMON_NOT_SET;
+DynamicRange current_dynamic_range = NONE;
 
 const char* daemon_to_string(AmbientLightingDaemon flavor)
 {
@@ -195,6 +196,11 @@ int set_hdr_state(char* host, ushort rpc_port, DynamicRange range)
         return -2;
     }
 
+    if (current_dynamic_range == range) {
+        INFO("set_hdr_state: Range already set to %d, ignoring", range);
+        return 0;
+    }
+
     jvalue_ref response_body_jval;
     jvalue_ref post_body = jobject_create();
 
@@ -212,12 +218,16 @@ int set_hdr_state(char* host, ushort rpc_port, DynamicRange range)
     case DOLBYVISION:
         lut_filename = LUT_FILENAME_DOLBYVISION;
         break;
+    case NONE:
+        break;
     }
     jobject_set(post_body, j_cstr_to_buffer("flatbuffers_user_lut_filename"), jstring_create(lut_filename));
 
     if ((ret = send_rpc_message(host, rpc_port, post_body, &response_body_jval)) != 0) {
         WARN("set_hdr_state: Failed to send RPC message, code: %d", ret);
         ret = -3;
+    } else {
+        current_dynamic_range = range;
     }
 
     j_release(&post_body);
