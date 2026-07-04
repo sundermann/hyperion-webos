@@ -129,6 +129,7 @@ void* unicapture_run(void* data)
 
     frame_info_t blended_frame = { PIXFMT_INVALID };
     frame_info_t final_frame = { PIXFMT_INVALID };
+    uint8_t* blend_alpha_y = NULL;
 
     this->vsync_thread_running = true;
     pthread_create(&this->vsync_thread, NULL, unicapture_vsync_handler, this);
@@ -222,6 +223,8 @@ void* unicapture_run(void* data)
             }
 
             if (target_format == PIXFMT_YUV420_SEMI_PLANAR) {
+                const int uv_height = height / 2;
+
                 blended_frame.planes[0].buffer = realloc(blended_frame.planes[0].buffer, width * height);
                 blended_frame.planes[0].stride = width;
                 blended_frame.planes[1].buffer = realloc(blended_frame.planes[1].buffer, width * height / 2);
@@ -230,23 +233,36 @@ void* unicapture_run(void* data)
                 blended_frame.width = width;
                 blended_frame.pixel_format = PIXFMT_YUV420_SEMI_PLANAR;
 
-                for (int i = 0; i < width * height; i++) {
-                    blended_frame.planes[0].buffer[i] = blend(ui_frame_converted.planes[0].buffer[i],
-                        video_frame_converted.planes[0].buffer[i], ui_frame.planes[0].buffer[i * 4 + 3]);
-                }
+                blend_alpha_y = realloc(blend_alpha_y, width * height);
 
-                int alpha_idx = 0;
-                for (int i = 0; i < height / 2; i++) {
-                    for (int j = 0; j < width; j += 2) {
-                        int idx = i * width + j;
-                        blended_frame.planes[1].buffer[idx] = blend(ui_frame_converted.planes[1].buffer[idx],
-                            video_frame_converted.planes[1].buffer[idx], ui_frame.planes[0].buffer[alpha_idx + 3]);
-                        blended_frame.planes[1].buffer[idx + 1] = blend(ui_frame_converted.planes[1].buffer[idx + 1],
-                            video_frame_converted.planes[1].buffer[idx + 1], ui_frame.planes[0].buffer[alpha_idx + 3]);
-                        alpha_idx += 8;
-                    }
-                    alpha_idx += ui_frame.planes[0].stride;
-                }
+                ARGBExtractAlpha(ui_frame.planes[0].buffer,
+                    ui_frame.planes[0].stride,
+                    blend_alpha_y,
+                    width,
+                    width,
+                    height);
+
+                BlendPlane(ui_frame_converted.planes[0].buffer,
+                    ui_frame_converted.planes[0].stride,
+                    video_frame_converted.planes[0].buffer,
+                    video_frame_converted.planes[0].stride,
+                    blend_alpha_y,
+                    width,
+                    blended_frame.planes[0].buffer,
+                    blended_frame.planes[0].stride,
+                    width,
+                    height);
+
+                BlendPlane(ui_frame_converted.planes[1].buffer,
+                    ui_frame_converted.planes[1].stride,
+                    video_frame_converted.planes[1].buffer,
+                    video_frame_converted.planes[1].stride,
+                    blend_alpha_y,
+                    width * 2,
+                    blended_frame.planes[1].buffer,
+                    blended_frame.planes[1].stride,
+                    width,
+                    uv_height);
             }
             converter_run(&final_converter, &blended_frame, &final_frame, target_format);
         } else if (ui_frame_converted.pixel_format != PIXFMT_INVALID) {
@@ -342,6 +358,7 @@ void* unicapture_run(void* data)
             blended_frame.planes[i].buffer = NULL;
         }
     }
+    free(blend_alpha_y);
 
     converter_release(&ui_converter);
     converter_release(&video_converter);
