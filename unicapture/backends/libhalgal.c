@@ -47,13 +47,14 @@ int capture_init(cap_backend_config_t* config, void** state_p)
     }
     INFO("HAL_GAL_CreateSurface done! SurfaceID: %d", this->surface_info.vendorData);
 
-    if ((ret = HAL_GAL_CaptureFrameBuffer(&this->surface_info)) != 0) {
-
-        ERR("HAL_GAL_CaptureFrameBuffer failed: %x", ret);
-        ret = -3;
-        goto err_destroy;
-    }
-    INFO("HAL_GAL_CaptureFrameBuffer done! %x", ret);
+    // NOTE: We deliberately do NOT call HAL_GAL_CaptureFrameBuffer() here.
+    // capture_init() runs on the caller's/setup thread, but actual frame
+    // capture happens later on unicapture's dedicated capture thread
+    // (see unicapture_run() -> capture_acquire_frame()). HAL_GAL_Init()
+    // appears to bind an EGL/GL context to the calling thread, and that
+    // binding is thread-affine. Capturing a frame here would bind/use the
+    // context on this (wrong) thread, causing EGL_BAD_ACCESS (0x3002) on
+    // every subsequent capture attempt from the real capture thread.
 
     // ToDo: compare open("/dev/mem", O_RDWR|O_SYNC);
     if ((this->mem_fd = open("/dev/gfx", 2)) < 0) {
