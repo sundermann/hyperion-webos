@@ -31,6 +31,11 @@ static int reserve_buffer(uint8_t** buffer, size_t* capacity, size_t size)
     return 0;
 }
 
+static void borrow_frame(frame_info_t* output, const frame_info_t* input)
+{
+    *output = *input;
+}
+
 int unicapture_init_backend(cap_backend_config_t* config, capture_backend_t* backend, const char* name)
 {
     char* error;
@@ -202,16 +207,23 @@ void* unicapture_run(void* data)
 
         uint64_t frame_acquired = getticks_us();
         pixel_format_t target_format = this->target_format;
+        pixel_format_t blend_format = (target_format == PIXFMT_RGB || target_format == PIXFMT_ARGB) ? PIXFMT_ARGB : PIXFMT_YUV420_SEMI_PLANAR;
 
         // Convert frame to suitable video formats
         if (ui_frame.pixel_format != PIXFMT_INVALID) {
-            converter_run(&ui_converter, &ui_frame, &ui_frame_converted,
-                (target_format == PIXFMT_RGB || target_format == PIXFMT_ARGB) ? PIXFMT_ARGB : PIXFMT_YUV420_SEMI_PLANAR);
+            if (ui_frame.pixel_format == blend_format) {
+                borrow_frame(&ui_frame_converted, &ui_frame);
+            } else {
+                converter_run(&ui_converter, &ui_frame, &ui_frame_converted, blend_format);
+            }
         }
 
         if (video_frame.pixel_format != PIXFMT_INVALID) {
-            converter_run(&video_converter, &video_frame, &video_frame_converted,
-                (target_format == PIXFMT_RGB || target_format == PIXFMT_ARGB) ? PIXFMT_ARGB : PIXFMT_YUV420_SEMI_PLANAR);
+            if (video_frame.pixel_format == blend_format) {
+                borrow_frame(&video_frame_converted, &video_frame);
+            } else {
+                converter_run(&video_converter, &video_frame, &video_frame_converted, blend_format);
+            }
         }
 
         uint64_t frame_converted = getticks_us();
@@ -297,9 +309,17 @@ void* unicapture_run(void* data)
                 }
             }
         } else if (ui_frame_converted.pixel_format != PIXFMT_INVALID) {
-            converter_run(&final_converter, &ui_frame_converted, &final_frame, target_format);
+            if (ui_frame_converted.pixel_format == target_format) {
+                borrow_frame(&final_frame, &ui_frame_converted);
+            } else {
+                converter_run(&final_converter, &ui_frame_converted, &final_frame, target_format);
+            }
         } else if (video_frame_converted.pixel_format != PIXFMT_INVALID) {
-            converter_run(&final_converter, &video_frame_converted, &final_frame, target_format);
+            if (video_frame_converted.pixel_format == target_format) {
+                borrow_frame(&final_frame, &video_frame_converted);
+            } else {
+                converter_run(&final_converter, &video_frame_converted, &final_frame, target_format);
+            }
         } else {
             got_frame = false;
             WARN("No valid frame to send...");
@@ -329,7 +349,7 @@ void* unicapture_run(void* data)
 
         if (this->callback_nv12 != NULL && target_format == PIXFMT_YUV420_SEMI_PLANAR) {
             this->callback_nv12(this->callback_data, final_frame.width, final_frame.height, final_frame.planes[0].buffer,
-                final_frame.planes[1].buffer, final_frame.width, final_frame.width);
+                final_frame.planes[1].buffer, final_frame.planes[0].stride, final_frame.planes[1].stride);
         }
 
         uint64_t frame_sent = getticks_us();
